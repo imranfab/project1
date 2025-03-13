@@ -13,6 +13,9 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 
+import pymysql
+pymysql.install_as_MySQLdb()
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,7 +33,7 @@ FRONTEND_URL = os.environ["FRONTEND_URL"]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 # Application definition
 
@@ -47,6 +50,7 @@ INSTALLED_APPS = [
     "authentication",
     "chat",
     "gpt",
+    # "accounts",
 ]
 
 MIDDLEWARE = [
@@ -84,10 +88,27 @@ WSGI_APPLICATION = "backend.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# "default": {
+#     "ENGINE": "django.db.backends.sqlite3",
+#     "NAME": BASE_DIR / "db.sqlite3",
+# },
+# "default": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": os.environ["POSTGRES_DB_NAME"],
+#         "USER": os.environ["POSTGRES_SQL_USER"],
+#         "PASSWORD": os.environ["POSTGRES_SQL_PASSWD"],
+#         "HOST": os.environ["POSTGRES_HOST"],
+#         "PORT": os.environ["POSTGRES_PORT"],
+# },
+
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": os.environ["MYSQL_DB_NAME"],
+        "USER": os.environ["MYSQL_DB_USER"],
+        "PASSWORD": os.environ["MYSQL_DB_PASSWORD"],
+        "HOST": os.environ["MYSQL_DB_HOST"],
+        "PORT": os.environ["MYSQL_DB_PORT"],
     }
 }
 
@@ -138,14 +159,24 @@ STATIC_URL = "/static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [
-    FRONTEND_URL,
+    FRONTEND_URL, 'http://localhost:3000',
 ]
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
-    FRONTEND_URL,
+    FRONTEND_URL, 'http://localhost:3000',
 ]
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_SAMESITE = "None"
+
+# Cron JOB
+CRONJOBS = [
+    ('0 0 * * *', 'django.core.management.call_command', 'cleanup_old_conversations'),  # Run at midnight every day
+]
+
+
+#login url
+# LOGIN_URL = '/admin/login/'
+
