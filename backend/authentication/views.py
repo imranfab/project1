@@ -19,7 +19,7 @@ def csrf_token(request):
     return JsonResponse({"data": token})
 
 
-@api_view(["POST"])
+@api_view(["POST","GET"])
 def login_view(request):
     email = request.data.get("email")
     password = request.data.get("password")

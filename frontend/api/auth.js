@@ -29,10 +29,7 @@ export const getCsrfToken = async () => {
 export const postLogin = async ({email, password}) => {
     try {
         const response = await axiosInstance.post(`/auth/login/`,
-            {
-                email,
-                password
-            });
+            {email,password},{ withCredentials: true });
 
         if (response.status === 200) {
             return {

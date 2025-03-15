@@ -19,6 +19,8 @@ function Login({isSubmitting, setIsSubmitting}) {
         const response = await dispatch(postLoginThunk({email, password}));
         const result = response.payload;
 
+       // console.log(result)
+
         if (result.ok) {
             router.push('/').catch((error) => {
                 console.error('An unexpected error occurred while redirecting to main page');

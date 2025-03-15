@@ -104,6 +104,20 @@
     transition: background-color 0.15s ease-in-out;
 }
 
+.userContainer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    border-top: 0.1rem solid var(--button-bg-enabled);
+    background-color: var(--primary-bg-dark);
+    margin-bottom: 45px;
+    display: flex;
+    flex-direction: column;
+    color: red;
+    align-items: center;
+    transition: background-color 0.15s ease-in-out;
+}
+
 .logoutContainer:hover {
     background-color: var(--secondary-bg-dark);
     border-top: 0.1rem solid var(--primary-yellow);

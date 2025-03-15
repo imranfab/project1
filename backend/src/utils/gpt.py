@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
 from src.libs import openai
+import os
+import requests
+import uuid
 
 GPT_40_PARAMS = dict(
     temperature=0.7,
@@ -61,17 +64,37 @@ def get_gpt_title(prompt: str, response: str):
 
 
 def get_conversation_answer(conversation: list[dict[str, str]], model: str, stream: bool = True):
-    kwargs = {**GPT_40_PARAMS, **dict(stream=stream)}
-    engine = GPT_VERSIONS[model].engine
+    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_BASE"))
 
-    for resp in openai.ChatCompletion.create(
-        engine=engine,
+    kwargs = {**GPT_40_PARAMS, **dict(stream=stream)}
+
+    response = client.chat.completions.create(
+        model=model,
         messages=[{"role": "system", "content": "You are a helpful assistant."}, *conversation],
-        **kwargs,
-    ):
-        choices = resp.get("choices", [])
+        **kwargs
+    )
+
+   
+    conversation_id = str(uuid.uuid4())
+    version_id = str(uuid.uuid4())  
+
+    assistant_response = ""
+
+    for resp in response:
+        choices = resp.choices
         if not choices:
             continue
-        chunk = choices.pop()["delta"].get("content")
+        chunk = choices[0].delta.content
         if chunk:
-            yield chunk
+            assistant_response += chunk  # Store response
+            yield chunk  # Stream the chunk
+
+    # Post Assistant Message to API after completion
+    assistant_message_data = {
+        "conversation_id": conversation_id,
+        "version_id": version_id,
+        "role": "assistant",
+        "question":conversation[-1]["content"],
+        "content": assistant_response,
+    }
+    requests.post(f"{os.getenv('BACKEND_URL')}/message/save_message/", data=assistant_message_data)

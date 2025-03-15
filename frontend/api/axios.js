@@ -3,9 +3,12 @@ import {store} from "../redux/store";
 import {backendApiBaseUrl} from "../config";
 
 export const axiosInstance = axios.create({
-  baseURL: `${backendApiBaseUrl}`,
+  baseURL: `http://127.0.0.1:8000`,
   withCredentials: true,
+  headers: { "Content-Type": "application/json" },
 });
+
+//console.log({backendApiBaseUrl})
 
 axiosInstance.interceptors.request.use((config) => {
   config.headers['Content-Type'] = 'application/json';

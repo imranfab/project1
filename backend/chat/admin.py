@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils import timezone
 from nested_admin.nested import NestedModelAdmin, NestedStackedInline, NestedTabularInline
 
-from chat.models import Conversation, Message, Role, Version
+from chat.models import Conversation, Message, Role, Version, History
 
 
 class RoleAdmin(NestedModelAdmin):
@@ -85,8 +85,13 @@ class VersionAdmin(NestedModelAdmin):
     inlines = [MessageInline]
     list_display = ("id", "conversation", "parent_version", "root_message")
 
+class HistoryAdmin(admin.ModelAdmin):
+    list_display = ("id", "conversation_id", "version_id", "role", "timestamp")
+    search_fields = ("role", "content")
+    list_filter = ("role", "timestamp")
 
 admin.site.register(Role, RoleAdmin)
 admin.site.register(Message, MessageAdmin)
 admin.site.register(Conversation, ConversationAdmin)
 admin.site.register(Version, VersionAdmin)
+admin.site.register(History, HistoryAdmin)

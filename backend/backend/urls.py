@@ -16,5 +16,6 @@ urlpatterns = [
     path("chat/", include("chat.urls")),
     path("gpt/", include("gpt.urls")),
     path("auth/", include("authentication.urls")),
+    path("message/", include("chat.urls")),
     path("", root_view),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

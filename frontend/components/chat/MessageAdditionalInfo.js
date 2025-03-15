@@ -1,7 +1,8 @@
 import React from 'react';
 import styles from "../../styles/chat/Message.module.css";
-import {EditMessageIcon, LeftArrowIcon, NoIcon, RightArrowIcon, YesIcon} from "../../assets/SVGIcon";
+import {EditMessageIcon, LeftArrowIcon, NoIcon, RightArrowIcon, YesIcon,CopyIcon} from "../../assets/SVGIcon";
 import SVGButton from "../common/SVGButton";
+
 
 
 export const AdditionalInfo = ({isUser, message, isStreaming, editProps, versionsProps}) => {

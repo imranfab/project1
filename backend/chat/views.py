@@ -3,11 +3,16 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-
-from chat.models import Conversation, Message, Version
+from django.http import JsonResponse
+import uuid
+from chat.models import Conversation, Message, Version, History
 from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer
 from chat.utils.branching import make_branched_conversation
 
+import openai
+import os
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 @api_view(["GET"])
 def chat_root_view(request):
@@ -230,3 +235,39 @@ def version_add_message(request, pk):
             status=status.HTTP_201_CREATED,
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["POST"])
+def save_message(request):
+        conversation_id = request.POST.get("conversation_id")
+        version_id = request.POST.get("version_id")
+        role = request.POST.get("role")
+        content = request.POST.get("content")
+        question=request.POST.get("question")
+
+        message = History.objects.create(
+            conversation_id=uuid.UUID(conversation_id),
+            version_id=uuid.UUID(version_id),
+            role=role,
+            question=question,
+            content=content
+        )
+
+        summary = generate_summary(conversation_id)
+        History.objects.filter(conversation_id=conversation_id).update(summary=summary)
+
+        return JsonResponse({"message": "Message saved", "id": str(message.id)})
+
+def generate_summary(conversation_id):
+    messages = History.objects.filter(conversation_id=conversation_id).order_by("timestamp")
+    conversation_text = "\n".join([msg.content for msg in messages])
+
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Summarize the following conversation in a concise manner."},
+            {"role": "user", "content": conversation_text}
+        ]
+    )
+    
+    summary = response.choices[0].message.content.strip()
+    return summary

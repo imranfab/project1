@@ -18,7 +18,20 @@
     padding: 1.25rem;
     border-radius: .5rem;
 }
+.copyButton {
+    position: absolute;
+    top: -1px;
+    right: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #ddd;
+    transition: color 0.2s;
+}
 
+.copyButton:hover {
+    color: grey;
+}
 .messageContent code {
     color: rgb(204, 120, 50); /* dark orange */
 }
@@ -52,7 +65,12 @@
     font-family: inherit;
     overflow: hidden;
 }
-
+.downloadButton {
+    margin-left: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
 .messageContent textarea:focus {
     outline: none;
 }
