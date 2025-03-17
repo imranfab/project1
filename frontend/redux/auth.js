@@ -57,6 +57,7 @@ const authSlice = createSlice({
     initialState: {
         user: Cookies.get('user') || null,
         csrfToken: null,
+        isAuthenticated: !!Cookies.get('user'),
     },
     reducers: {},
     extraReducers: (builder) => {
@@ -69,11 +70,13 @@ const authSlice = createSlice({
                 console.log('postLoginThunk.fulfilled', action.payload);  // delete this line later
                 const email = action.payload.email;
                 state.user = email;
+                state.isAuthenticated = true;
                 Cookies.set('user', email, {sameSite: 'None', secure: true});
             })
             .addCase(postLogoutThunk.fulfilled, (state, action) => {
                 console.log('postLogoutThunk.fulfilled', action.payload);  // delete this line later
                 state.user = null;
+                state.isAuthenticated = false;
                 Cookies.remove('user', {sameSite: 'None', secure: true});
             });
     }
