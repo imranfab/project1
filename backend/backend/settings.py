@@ -24,8 +24,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
-FRONTEND_URL = os.environ["FRONTEND_URL"]
+# SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+# FRONTEND_URL = os.environ["FRONTEND_URL"]
+
+
+from decouple import config
+SECRET_KEY=config("DJANGO_SECRET_KEY")
+
+# FRONTEND_URL
+FRONTEND_URL=config("FRONTEND_URL",default="http://localhost:3000")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

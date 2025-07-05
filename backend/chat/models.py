@@ -22,6 +22,7 @@ class Conversation(models.Model):
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    summary=models.TextField(blank=True,null=True)
 
     def __str__(self):
         return self.title
@@ -53,6 +54,7 @@ class Message(models.Model):
     role = models.ForeignKey(Role, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     version = models.ForeignKey("Version", related_name="messages", on_delete=models.CASCADE)
+    
 
     class Meta:
         ordering = ["created_at"]
