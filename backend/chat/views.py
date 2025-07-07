@@ -7,7 +7,8 @@ from rest_framework.response import Response
 from chat.models import Conversation, Message, Version
 from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer
 from chat.utils.branching import make_branched_conversation
-
+from django.core.cache import cache
+from django.core.paginator import Paginator
 
 @api_view(["GET"])
 def chat_root_view(request):
@@ -230,3 +231,98 @@ def version_add_message(request, pk):
             status=status.HTTP_201_CREATED,
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+#### Developed a new API endpoint to retrieve conversation summaries, ensuring it supports pagination and filtering.
+@login_required
+@api_view(["GET"])
+def conversation_summaries(request):
+    cache_key = f"summaries_{request.user.id}"
+    cached_data = cache.get(cache_key)
+    
+    if cached_data:
+        return Response(cached_data)
+    
+    conversations = Conversation.objects.filter(
+        user=request.user, 
+        deleted_at__isnull=True,
+        summary__isnull=False
+    ).exclude(summary="").order_by("-modified_at")
+    
+    title_filter = request.GET.get('title')
+    if title_filter:
+        conversations = conversations.filter(title__icontains=title_filter)
+    
+    paginator = Paginator(conversations, 10)            
+    page = request.GET.get('page', 1)
+    conversations_page = paginator.get_page(page)
+    
+    data = {
+        'summaries': [{
+            'id': conv.id,
+            'title': conv.title,
+            'summary': conv.summary,
+            'created_at': conv.created_at,
+            'modified_at': conv.modified_at
+        } for conv in conversations_page],
+        'total': paginator.count,
+        'page': page,
+        'pages': paginator.num_pages
+    }
+    
+    cache.set(cache_key, data, 300)
+    return Response(data)
+
+
+# task-3 step-8
+
+from rest_framework import generics, filters
+from .models import Conversation
+from .serializers import ConversationSummarySerializer
+from django_filters.rest_framework import DjangoFilterBackend
+
+class ConversationSummaryListAPIView(generics.ListAPIView):
+    queryset = Conversation.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+    serializer_class = ConversationSummarySerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['user__username']  # filter by user
+    search_fields = ['summary']            # search by summary content
+
+
+# task-3 step-9
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import FileUpload
+from .serializers import FileUploadSerializer
+
+class FileUploadView(APIView):
+    def post(self, request):
+        serializer = FileUploadSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "File uploaded successfully.", "data": serializer.data})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# task-3 step-10
+
+from rest_framework.generics import ListAPIView
+from .models import FileUpload
+from .serializers import FileUploadListSerializer
+
+class FileUploadListView(ListAPIView):
+    queryset = FileUpload.objects.all().order_by('-uploaded_at')
+    serializer_class = FileUploadListSerializer
+
+
+# task-3 step-11
+
+from rest_framework.generics import DestroyAPIView
+from .models import FileUpload
+from .serializers import FileUploadListSerializer
+
+class FileUploadDeleteView(DestroyAPIView):
+    queryset = FileUpload.objects.all()
+    serializer_class = FileUploadListSerializer
+    lookup_field = 'id'

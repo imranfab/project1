@@ -19,4 +19,41 @@ urlpatterns = [
     ),
     path("conversations/<uuid:pk>/delete/", views.conversation_soft_delete, name="conversation_delete"),
     path("versions/<uuid:pk>/add_message/", views.version_add_message, name="version_add_message"),
+     path("summaries/", views.conversation_summaries, name="conversation_summaries"),
+]
+
+# task-3 step-8
+from django.urls import path
+from .views import ConversationSummaryListAPIView
+
+urlpatterns = [
+    path('conversation-summaries/', ConversationSummaryListAPIView.as_view(), name='conversation-summaries'),
+]
+
+# task-3 step-9
+
+from django.urls import path
+from .views import FileUploadView
+
+urlpatterns = [
+    path('upload/', FileUploadView.as_view(), name='file-upload'),
+]
+
+# task-3 step-10
+
+from .views import FileUploadListView
+
+urlpatterns = [
+    path('upload/', FileUploadView.as_view(), name='file-upload'),
+    path('files/', FileUploadListView.as_view(), name='file-list'),  # ✅ NEW
+]
+
+# task-3 step-11
+
+from .views import FileUploadDeleteView
+
+urlpatterns = [
+    path('upload/', FileUploadView.as_view(), name='file-upload'),
+    path('files/', FileUploadListView.as_view(), name='file-list'),
+    path('files/<int:id>/delete/', FileUploadDeleteView.as_view(), name='file-delete'),  # ✅ NEW
 ]

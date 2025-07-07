@@ -150,3 +150,46 @@ class ConversationSerializer(serializers.ModelSerializer):
                 version_serializer.save(conversation=instance)
 
         return instance
+
+
+# task-3 step-8 add fillter to the conversations
+from rest_framework import serializers
+from .models import Conversation
+
+class ConversationSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ['id', 'user', 'summary', 'created_at']
+
+
+# task-3 step-9 to upload the file
+import hashlib
+from rest_framework import serializers
+from .models import FileUpload
+
+class FileUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FileUpload
+        fields = ['id', 'file', 'original_name', 'uploaded_at']
+
+    def validate(self, data):
+        file = data.get('file')
+        sha256 = hashlib.sha256()
+        for chunk in file.chunks():
+            sha256.update(chunk)
+        file_hash = sha256.hexdigest()
+
+        if FileUpload.objects.filter(file_hash=file_hash).exists():
+            raise serializers.ValidationError("This file has already been uploaded.")
+
+        data['file_hash'] = file_hash
+        data['original_name'] = file.name
+        return data
+
+# task-3 step-10
+
+class FileUploadListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FileUpload
+        fields = ['id', 'original_name', 'file', 'uploaded_at', 'file_hash']
+
