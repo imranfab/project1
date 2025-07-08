@@ -1,12 +1,55 @@
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+
+
 
 from chat.models import Conversation, Message, Version
 from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer
 from chat.utils.branching import make_branched_conversation
+# task-3 imports-1.0  Destroyapi view -3.4 delete file end point
+from rest_framework.generics import ListAPIView
+from rest_framework.filters import SearchFilter
+from django_filters.rest_framework import DjangoFilterBackend
+from chat.serializers import ConversationSummarySerializer
+
+# task-3.2file upload with duplicate check
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .serializers import UploadedFileSerializer
+# task-3.3 List Uploaded Files with Metadata
+from .models import FileUpload
+
+class FileUploadView(APIView):
+    def post(self, request):
+        serializer = UploadedFileSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+    
+class FileListView(ListAPIView):
+    queryset = FileUpload.objects.all().order_by('-uploaded_at')
+    serializer_class = UploadedFileSerializer
+
+
+
+
+    
+
+# task 3-1.0
+class ConversationSummaryListView(ListAPIView):
+    queryset = Conversation.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+    serializer_class = ConversationSummarySerializer
+    filter_backends = [SearchFilter, DjangoFilterBackend]
+    search_fields = ['title', 'summary']
+
+    def get_queryset(self):
+        user = self.request.user
+        return Conversation.objects.filter(user=user, deleted_at__isnull=True).order_by('-created_at')
+# end----------------------
 
 
 @api_view(["GET"])
@@ -230,3 +273,100 @@ def version_add_message(request, pk):
             status=status.HTTP_201_CREATED,
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# task-4 imports
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
+
+from .models import FileUpload
+from .serializers import UploadedFileSerializer
+
+import logging
+from .models import FileLog
+
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_file_view(request):
+    if not request.user.is_staff:
+        return Response({'detail': 'Permission denied. Admins only.'}, status=403)
+
+    if 'file' not in request.FILES:
+        return Response({'error': 'No file provided.'}, status=400)
+
+    file_obj = request.FILES['file']
+    uploaded_file =FileUpload.objects.create(user=request.user, file=file_obj)
+
+    # Log to console
+    logger.info(f"{request.user.email} uploaded file: {file_obj.name}")
+
+    #  Log to DataBase
+    FileLog.objects.create(user=request.user, file_name=file_obj.name, action='UPLOAD')
+
+    return Response({'message': 'File uploaded successfully.'}, status=201)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_uploaded_file(request, file_id):
+    try:
+        uploaded_file = FileUpload.objects.get(id=file_id)
+        file_name = uploaded_file.file.name
+        uploaded_file.delete()
+
+        #  Create a FileLog entry
+        FileLog.objects.create(
+            user=request.user,
+            action='DELETE',
+            file_name=file_name
+        )
+
+        logger.info(f"{request.user.email} deleted file: {file_name}")
+        return Response({'message': 'File deleted successfully.'}, status=200)
+    except FileUpload.DoesNotExist:
+        return Response({'error': 'File not found.'}, status=404)
+
+
+from django.core.cache import cache
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from chat.models import Conversation
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_conversation_summary(request, id):
+    cache_key = f"conversation_summary_{id}"
+    summary = cache.get(cache_key)
+
+    if summary is None:
+        try:
+            conversation = Conversation.objects.get(id=id, user=request.user)
+        except Conversation.DoesNotExist:
+            return Response({"error": "Conversation not found"}, status=404)
+
+        summary = conversation.summary or "No summary available"
+        cache.set(cache_key, summary, timeout=3600)  # cache for 1 hour
+
+    return Response({"id": id, "summary": summary})
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': { 'class': 'logging.StreamHandler' },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}
+
+
+
+
+
+
+
+
+
