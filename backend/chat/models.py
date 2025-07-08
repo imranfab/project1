@@ -1,8 +1,8 @@
 import uuid
-
 from django.db import models
-
 from authentication.models import CustomUser
+import hashlib
+from django.db import models
 
 
 class Role(models.Model):
@@ -22,6 +22,7 @@ class Conversation(models.Model):
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    summary=models.TextField(blank=True,null=True)
 
     def __str__(self):
         return self.title
@@ -53,6 +54,7 @@ class Message(models.Model):
     role = models.ForeignKey(Role, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     version = models.ForeignKey("Version", related_name="messages", on_delete=models.CASCADE)
+    
 
     class Meta:
         ordering = ["created_at"]
@@ -63,3 +65,42 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:20]}..."
+
+from django.core.exceptions import ValidationError
+class FileUpload(models.Model):
+    file = models.FileField(upload_to='uploads/')
+    file_hash = models.CharField(max_length=64, unique=True)
+    original_name = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if FileUpload.objects.exclude(pk=self.pk).filter(file_hash=self.file_hash).exists():
+            raise ValidationError("This file already exists in the system.")
+
+    def save(self, *args, **kwargs):
+        if not self.file_hash:
+            sha256 = hashlib.sha256()
+            for chunk in self.file.chunks():
+                sha256.update(chunk)
+            self.file_hash = sha256.hexdigest()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.original_name
+
+
+# task-4
+
+class FileLog(models.Model):
+    ACTION_CHOICES = [
+        ('UPLOAD', 'Upload'),
+        ('DELETE', 'Delete'),
+        ('ACCESS', 'Access'),
+    ]
+    user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    file_name = models.CharField(max_length=255)
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def _str_(self):
+        return f"{self.timestamp} - {self.user} - {self.action} - {self.file_name}"

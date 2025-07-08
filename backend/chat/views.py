@@ -1,12 +1,22 @@
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import status , generics, filters
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from django.http import HttpResponse
 
-from chat.models import Conversation, Message, Version
-from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer
+from chat.models import Conversation, Message, Version ,FileUpload
+from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer,ConversationSummarySerializer,FileUploadSerializer
 from chat.utils.branching import make_branched_conversation
+from django_filters.rest_framework import DjangoFilterBackend
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+from rest_framework.generics import ListAPIView
+from .serializers import FileUploadListSerializer
+from rest_framework.generics import DestroyAPIView
+
 
 
 @api_view(["GET"])
@@ -147,7 +157,6 @@ def conversation_add_message(request, pk):
     serializer = MessageSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save(version=version)
-        # return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(
             {
                 "message": serializer.data,
@@ -230,3 +239,122 @@ def version_add_message(request, pk):
             status=status.HTTP_201_CREATED,
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# task-3 step-8
+class ConversationSummaryListAPIView(generics.ListAPIView):
+    queryset = Conversation.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+    serializer_class = ConversationSummarySerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['user__username']  
+    search_fields = ['summary']            
+
+
+
+# task-3 step-9
+
+class FileUploadView(APIView):
+    def post(self, request):
+        serializer = FileUploadSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "File uploaded successfully.", "data": serializer.data})
+        else:
+            return HttpResponse("Duplicate Files Found!!!")
+
+
+
+
+# task-3 step-10
+
+class FileUploadListView(ListAPIView):
+    queryset = FileUpload.objects.all().order_by('-uploaded_at')
+    serializer_class = FileUploadListSerializer
+
+
+
+#task-3 step-11
+
+class FileUploadDeleteView(DestroyAPIView):
+    queryset = FileUpload.objects.all()
+    serializer_class = FileUploadListSerializer
+    lookup_field = 'id'
+
+
+# task -4
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from .models import FileUpload
+from .serializers import FileUploadSerializer
+
+import logging
+from .models import FileLog
+
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_file_view(request):
+    if not request.user.is_staff:
+        return Response({'detail': 'Permission denied. Admins only.'}, status=403)
+
+    if 'file' not in request.FILES:
+        return Response({'error': 'No file provided.'}, status=400)
+
+    file_obj = request.FILES['file']
+    uploaded_file = FileUpload.objects.create(user=request.user, file=file_obj)
+
+    # ✅ Log to console
+    logger.info(f"{request.user.email} uploaded file: {file_obj.name}")
+
+    # ✅ Log to DB
+    FileLog.objects.create(user=request.user, file_name=file_obj.name, action='UPLOAD')
+
+    return Response({'message': 'File uploaded successfully.'}, status=201)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_uploaded_file(request, file_id):
+    try:
+        uploaded_file = FileUpload.objects.get(id=file_id)
+        file_name = uploaded_file.file.name
+        uploaded_file.delete()
+
+        # ✅ Create a FileLog entry
+        FileLog.objects.create(
+            user=request.user,
+            action='DELETE',
+            file_name=file_name
+        )
+
+        logger.info(f"{request.user.email} deleted file: {file_name}")
+        return Response({'message': 'File deleted successfully.'}, status=200)
+    except FileUpload.DoesNotExist:
+        return Response({'error': 'File not found.'}, status=404)
+
+
+from django.core.cache import cache
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from chat.models import Conversation
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_conversation_summary(request, id):
+    cache_key = f"conversation_summary_{id}"
+    summary = cache.get(cache_key)
+
+    if summary is None:
+        try:
+            conversation = Conversation.objects.get(id=id, user=request.user)
+        except Conversation.DoesNotExist:
+            return Response({"error": "Conversation not found"}, status=404)
+
+        summary = conversation.summary or "No summary available"
+        cache.set(cache_key, summary, timeout=3600)  # cache for 1 hour
+
+    return Response({"id": id, "summary": summary})

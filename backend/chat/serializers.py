@@ -1,8 +1,12 @@
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from rest_framework import serializers
+import hashlib
+from rest_framework import serializers
+from rest_framework import serializers
 
-from chat.models import Conversation, Message, Role, Version
+
+from chat.models import Conversation, Message, Role, Version , FileUpload
 
 
 def should_serialize(validated_data, field_name) -> bool:
@@ -150,3 +154,39 @@ class ConversationSerializer(serializers.ModelSerializer):
                 version_serializer.save(conversation=instance)
 
         return instance
+
+
+#task-3 step-8
+
+class ConversationSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ['id', 'user', 'summary', 'created_at']
+
+
+#task-3 step-9
+class FileUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FileUpload
+        fields = ['id', 'file', 'original_name', 'uploaded_at']
+
+    def validate(self, data):
+        file = data.get('file')
+        sha256 = hashlib.sha256()
+        for chunk in file.chunks():
+            sha256.update(chunk)
+        file_hash = sha256.hexdigest()
+
+        if FileUpload.objects.filter(file_hash=file_hash).exists():
+            raise serializers.ValidationError("This file has already been uploaded.")
+
+        data['file_hash'] = file_hash
+        data['original_name'] = file.name
+        return data
+
+# task-3 step-10
+
+class FileUploadListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FileUpload
+        fields = ['id', 'original_name', 'file', 'uploaded_at', 'file_hash']
