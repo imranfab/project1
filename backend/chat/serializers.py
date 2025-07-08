@@ -1,6 +1,9 @@
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+# task-3 file upload with duplicate check
+import hashlib 
 from rest_framework import serializers
+from .models import FileUpload
 
 from chat.models import Conversation, Message, Role, Version
 
@@ -8,6 +11,31 @@ from chat.models import Conversation, Message, Role, Version
 def should_serialize(validated_data, field_name) -> bool:
     if validated_data.get(field_name) is not None:
         return True
+    
+#  Task -3 changes
+class ConversationSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ['id', 'title', 'summary', 'created_at']
+
+# task-3 file upload with duplicate check
+class UploadedFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FileUpload
+        fields = '__all__'
+
+    def create(self, validated_data):
+        file = validated_data['file']
+        content = file.read()
+        file.seek(0)
+        checksum = hashlib.sha256(content).hexdigest()
+
+        if FileUpload.objects.filter(checksum=checksum).exists():
+            raise serializers.ValidationError("Duplicate file detected.")
+
+        validated_data['checksum'] = checksum
+        validated_data['filename'] = file.name
+        return super().create(validated_data)
 
 
 class TitleSerializer(serializers.Serializer):

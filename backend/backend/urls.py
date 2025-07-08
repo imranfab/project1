@@ -14,7 +14,12 @@ def root_view(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("chat/", include("chat.urls")),
+    # task-3
     path("gpt/", include("gpt.urls")),
     path("auth/", include("authentication.urls")),
     path("", root_view),
+    # task3.2
+    path('admin/', admin.site.urls),
+    path('api/', include('chat.urls')),  # 👈 include chat URLs here
+    # end--------
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

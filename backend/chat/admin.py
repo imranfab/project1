@@ -4,7 +4,36 @@ from nested_admin.nested import NestedModelAdmin, NestedStackedInline, NestedTab
 
 from chat.models import Conversation, Message, Role, Version
 
+# task 3.2
+from .models import FileUpload
+from django import forms
+from django.contrib import messages
+from django.core.exceptions import ValidationError
 
+# task 3.2
+# Custom form to show only user and file (hide hash/size in input)
+class FileUploadForm(forms.ModelForm):
+    class Meta:
+        model = FileUpload
+        fields = ['user', 'file']  # only show user and file fields
+@admin.register(FileUpload)
+class FileUploadAdmin(admin.ModelAdmin):
+    form = FileUploadForm
+    list_display = ("id", "file_name", "file_size", "file_hash", "uploaded_at", "user")
+    readonly_fields = ("file_name", "file_size", "file_hash", "uploaded_at")
+
+    def save_model(self, request, obj, form, change):
+        try:
+            obj.save()  # Triggers full_clean() with validation
+            self.message_user(request, "File uploaded successfully.", level=messages.SUCCESS)
+        except ValidationError as e:
+            self.message_user(
+                request,
+                f"Upload failed: {e.messages[0]}",
+                level=messages.WARNING
+            )
+
+# end----------------------
 class RoleAdmin(NestedModelAdmin):
     list_display = ["id", "name"]
 
@@ -51,7 +80,7 @@ class DeletedListFilter(admin.SimpleListFilter):
 class ConversationAdmin(NestedModelAdmin):
     actions = ["undelete_selected", "soft_delete_selected"]
     inlines = [VersionInline]
-    list_display = ("title", "id", "created_at", "modified_at", "deleted_at", "version_count", "is_deleted", "user")
+    list_display = ("title", "id", "created_at", "modified_at", "deleted_at", "version_count", "is_deleted", "user","summary")
     list_filter = (DeletedListFilter,)
     ordering = ("-modified_at",)
 
@@ -79,8 +108,7 @@ class ConversationAdmin(NestedModelAdmin):
 
     is_deleted.boolean = True
     is_deleted.short_description = "Deleted?"
-
-
+    
 class VersionAdmin(NestedModelAdmin):
     inlines = [MessageInline]
     list_display = ("id", "conversation", "parent_version", "root_message")
