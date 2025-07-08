@@ -31,5 +31,10 @@ urlpatterns = [
     path('upload/', FileUploadView.as_view(), name='file-upload'),
     path('files/', FileUploadListView.as_view(), name='file-list'),
     path('files/<int:id>/delete/', FileUploadDeleteView.as_view(), name='file-delete'),
+
+    path('delete/<int:file_id>/', views.delete_uploaded_file, name='delete-file'),
+      path('conversation/<uuid:id>/summary/', views.get_conversation_summary, name='conversation-summary'),
+
+path('conversation/<uuid:pk>/', views.conversation_manage, name='conversation-manage'),
 ]
 

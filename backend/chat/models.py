@@ -66,12 +66,16 @@ class Message(models.Model):
     def __str__(self):
         return f"{self.role}: {self.content[:20]}..."
 
-
+from django.core.exceptions import ValidationError
 class FileUpload(models.Model):
     file = models.FileField(upload_to='uploads/')
     file_hash = models.CharField(max_length=64, unique=True)
     original_name = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if FileUpload.objects.exclude(pk=self.pk).filter(file_hash=self.file_hash).exists():
+            raise ValidationError("This file already exists in the system.")
 
     def save(self, *args, **kwargs):
         if not self.file_hash:
@@ -83,3 +87,20 @@ class FileUpload(models.Model):
 
     def __str__(self):
         return self.original_name
+
+
+# task-4
+
+class FileLog(models.Model):
+    ACTION_CHOICES = [
+        ('UPLOAD', 'Upload'),
+        ('DELETE', 'Delete'),
+        ('ACCESS', 'Access'),
+    ]
+    user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    file_name = models.CharField(max_length=255)
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def _str_(self):
+        return f"{self.timestamp} - {self.user} - {self.action} - {self.file_name}"

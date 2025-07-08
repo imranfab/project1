@@ -3,9 +3,8 @@ from django.utils import timezone
 from rest_framework import serializers
 import hashlib
 from rest_framework import serializers
-# from .models import FileUpload
 from rest_framework import serializers
-# from .models import Conversation
+
 
 from chat.models import Conversation, Message, Role, Version , FileUpload
 
