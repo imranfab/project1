@@ -19,4 +19,9 @@ urlpatterns = [
     ),
     path("conversations/<uuid:pk>/delete/", views.conversation_soft_delete, name="conversation_delete"),
     path("versions/<uuid:pk>/add_message/", views.version_add_message, name="version_add_message"),
+    path("conversations/summaries/", views.ConversationSummaryView.as_view(), name="conversation-summaries"),
+    path('files/upload/', views.FileUploadView.as_view(), name="file-upload"),
+    path('files/', views.FileListView.as_view(), name="file-list"),
+    path('files/<uuid:pk>/', views.FileDeleteView.as_view(), name="file-delete"),
+
 ]

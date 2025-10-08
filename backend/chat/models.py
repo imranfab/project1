@@ -69,3 +69,42 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:20]}..."
+
+
+
+import hashlib
+from django.core.exceptions import ValidationError
+
+
+class UploadedFile(models.Model):
+    """
+    Model to store uploaded files with a checksum for duplication check.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    file = models.FileField(upload_to="uploads/")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    checksum = models.CharField(max_length=64, unique=True)
+
+    def __str__(self):
+        return f"{self.file.name}"
+
+    def clean(self):
+        # Calculate checksum for duplication validation
+        if self.file:
+            sha = hashlib.sha256()
+            for chunk in self.file.chunks():
+                sha.update(chunk)
+            checksum = sha.hexdigest()
+            if UploadedFile.objects.filter(checksum=checksum).exists():
+                raise ValidationError("This file already exists.")
+            self.checksum = checksum
+
+    def save(self, *args, **kwargs):
+        if not self.checksum and self.file:
+            sha = hashlib.sha256()
+            for chunk in self.file.chunks():
+                sha.update(chunk)
+            self.checksum = sha.hexdigest()
+        super().save(*args, **kwargs)
+

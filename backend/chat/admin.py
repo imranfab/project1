@@ -1,8 +1,15 @@
 from django.contrib import admin
 from django.utils import timezone
 from nested_admin.nested import NestedModelAdmin, NestedStackedInline, NestedTabularInline
+from .models import Conversation, Message, Role, Version, UploadedFile
 
-from chat.models import Conversation, Message, Role, Version
+
+@admin.register(UploadedFile)
+class UploadedFileAdmin(admin.ModelAdmin):
+    list_display = ["id", "file", "uploaded_at", "checksum", "user"]
+    list_filter = ["uploaded_at", "user"]
+    search_fields = ["file", "user__username"]
+    readonly_fields = ["checksum"]
 
 
 class RoleAdmin(NestedModelAdmin):

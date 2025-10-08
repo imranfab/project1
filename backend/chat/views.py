@@ -1,11 +1,22 @@
+from django.core.files.storage import default_storage
+import os
+
+
+from rest_framework.parsers import MultiPartParser, FormParser
+from chat.models import UploadedFile
+
+from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework import generics, filters, pagination
+
+from chat.models import Conversation
 
 from chat.models import Conversation, Message, Version
-from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer
+from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer, UploadedFileSerializer
 from chat.utils.branching import make_branched_conversation
 
 
@@ -230,3 +241,76 @@ def version_add_message(request, pk):
             status=status.HTTP_201_CREATED,
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ConversationPagination(pagination.PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class ConversationSummaryView(generics.ListAPIView):
+    """
+    Returns paginated conversation summaries with optional filtering.
+    Example: /api/conversations/summaries/?search=mock&page=1&ordering=-created_at
+    """
+    serializer_class = ConversationSerializer 
+    pagination_class = ConversationPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["title", "summary"]  # Search in both title and summary
+    ordering_fields = ["created_at", "modified_at", "title"]
+    ordering = ["-modified_at"]  # Default ordering
+
+    def get_queryset(self):
+        queryset = Conversation.objects.filter(
+            user=self.request.user, 
+            deleted_at__isnull=True
+        )
+        
+        # Add filtering by date range
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(created_at__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(created_at__lte=end_date)
+            
+        return queryset
+    
+
+class FileUploadView(generics.CreateAPIView):
+    """
+    File uplode endpoint with duplication check.
+    POST /api/files/upload/
+    """
+    serializer_class = UploadedFileSerializer
+    parser_classes = [FormParser, MultiPartParser]
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class FileListView(generics.ListAPIView):
+    """
+    List all uploaded files.
+    GET /api/files/
+    """
+    serializer_class = UploadedFileSerializer
+
+    def get_queryset(self):
+        return UploadedFile.objects.filter(user=self.request.user).order_by("-uploaded_at")
+
+class FileDeleteView(generics.DestroyAPIView):
+    """
+    Delete a uploaded file.
+    DELETE /api/files/{id}/
+    """
+    serializer_class = UploadedFileSerializer
+
+    def get_queryset(self):
+        return UploadedFile.objects.filter(user=self.request.user)
+
+    def perform_destroy(self, instance):
+
+        if instance.file and default_storage.exists(instance.file.name):
+            default_storage.delete(instance.file.name)
+        instance.delete()
