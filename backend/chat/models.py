@@ -1,5 +1,5 @@
 import uuid
-
+import io
 from django.db import models
 
 from authentication.models import CustomUser
@@ -22,6 +22,8 @@ class Conversation(models.Model):
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, blank=False, null=False, default="active")
+    summary = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return self.title
@@ -58,8 +60,52 @@ class Message(models.Model):
         ordering = ["created_at"]
 
     def save(self, *args, **kwargs):
-        self.version.conversation.save()
         super().save(*args, **kwargs)
+
+        messages = self.version.messages.all()
+        summary_text = "".join([message.content for message in messages])[:200]
+        self.version.conversation.summary = summary_text
+        self.version.conversation.save()
 
     def __str__(self):
         return f"{self.role}: {self.content[:20]}..."
+
+
+
+import hashlib
+from django.core.exceptions import ValidationError
+
+
+class UploadedFile(models.Model):
+    """
+    Model to store uploaded files with a checksum for duplication check.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    file = models.FileField(upload_to="uploads/")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    checksum = models.CharField(max_length=64, unique=True)
+    extracted_text = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.file.name}"
+
+    def clean(self):
+        # Calculate checksum for duplication validation
+        if self.file:
+            sha = hashlib.sha256()
+            for chunk in self.file.chunks():
+                sha.update(chunk)
+            checksum = sha.hexdigest()
+            if UploadedFile.objects.filter(checksum=checksum).exists():
+                raise ValidationError("This file already exists.")
+            self.checksum = checksum
+
+    def save(self, *args, **kwargs):
+        if not self.checksum and self.file:
+            sha = hashlib.sha256()
+            for chunk in self.file.chunks():
+                sha.update(chunk)
+            self.checksum = sha.hexdigest()
+        super().save(*args, **kwargs)
+

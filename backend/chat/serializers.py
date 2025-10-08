@@ -1,8 +1,7 @@
+from chat.models import Conversation, Message, Role, Version, UploadedFile
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from rest_framework import serializers
-
-from chat.models import Conversation, Message, Role, Version
 
 
 def should_serialize(validated_data, field_name) -> bool:
@@ -40,6 +39,16 @@ class MessageSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation["versions"] = []  # add versions field
         return representation
+
+
+
+class UploadedFileSerializer(serializers.ModelSerializer):
+    """Serializer for file uploads with metadata."""
+    
+    class Meta:
+        model = UploadedFile
+        fields = ['id', 'file', 'uploaded_at', 'checksum']
+        read_only_fields = ['id', 'uploaded_at', 'checksum']
 
 
 class VersionSerializer(serializers.ModelSerializer):

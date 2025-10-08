@@ -69,12 +69,12 @@ const authSlice = createSlice({
                 console.log('postLoginThunk.fulfilled', action.payload);  // delete this line later
                 const email = action.payload.email;
                 state.user = email;
-                Cookies.set('user', email, {sameSite: 'None', secure: true});
+                Cookies.set('user', email, {sameSite: 'Lax', secure: false});
             })
             .addCase(postLogoutThunk.fulfilled, (state, action) => {
                 console.log('postLogoutThunk.fulfilled', action.payload);  // delete this line later
                 state.user = null;
-                Cookies.remove('user', {sameSite: 'None', secure: true});
+                Cookies.remove('user', {sameSite: 'Lax', secure: false});
             });
     }
 });

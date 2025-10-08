@@ -11,9 +11,13 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import os
+import logging
+
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from celery.schedules import crontab
 
 load_dotenv()
 
@@ -30,7 +34,7 @@ FRONTEND_URL = os.environ["FRONTEND_URL"]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 # Application definition
 
@@ -47,7 +51,47 @@ INSTALLED_APPS = [
     "authentication",
     "chat",
     "gpt",
+    'django_crontab',
 ]
+
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "format": '{"time":"%(asctime)s", "level":"%(levelname)s", "message":"%(message)s"}',
+        },
+    },
+    "handlers": {
+        "file_activity": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "activity.log"),
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "encoding": "utf-8",
+            "formatter": "json",
+        },
+    },
+    "loggers": {
+        "activity": { 
+            "handlers": ["file_activity"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "local-cache",
+        "TIMEOUT": 300,  # default TTL (seconds)
+    }
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -86,9 +130,21 @@ WSGI_APPLICATION = "backend.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("POSTGRES_DB"),
+        "USER": os.environ.get("POSTGRES_USER"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD"),
+        "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
+}
+
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_BEAT_SCHEDULE = {
+    'cleanup-every-day': {
+        'task': 'chat.tasks.cleanup_old_conversations_task',
+        'schedule': crontab(hour=0, minute=0),  # every day at midnight
+    },
 }
 
 # Password validation
@@ -138,14 +194,18 @@ STATIC_URL = "/static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [
-    FRONTEND_URL,
+    "http://localhost:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
-    FRONTEND_URL,
+    "http://localhost:3000",
 ]
 
-SESSION_COOKIE_SECURE = True
+CORNJOBS = [
+    ('0 0 * * *', 'django.core.management.call_command', ['cleanup_conversations']),
+]
+
+SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = True
-CSRF_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SAMESITE = 'Lax'

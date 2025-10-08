@@ -1,11 +1,25 @@
+import os
+import io
+import logging
+activity_log = logging.getLogger("activity")  # <- updated logger name
+
+from django.core.cache import cache
+from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
-from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
-from chat.models import Conversation, Message, Version
-from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer
+from rest_framework.permissions import BasePermission
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import generics, filters, pagination
+from rest_framework.permissions import IsAuthenticated
+
+from chat.models import Conversation, Message, Version, UploadedFile
+from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer, UploadedFileSerializer
 from chat.utils.branching import make_branched_conversation
 
 
@@ -147,7 +161,6 @@ def conversation_add_message(request, pk):
     serializer = MessageSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save(version=version)
-        # return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(
             {
                 "message": serializer.data,
@@ -171,7 +184,6 @@ def conversation_add_version(request, pk):
     except Message.DoesNotExist:
         return Response({"detail": "Root message not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    # Check if root message belongs to the same conversation
     if root_message.version.conversation != conversation:
         return Response({"detail": "Root message not part of the conversation"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -179,14 +191,12 @@ def conversation_add_version(request, pk):
         conversation=conversation, parent_version=root_message.version, root_message=root_message
     )
 
-    # Copy messages before root_message to new_version
     messages_before_root = Message.objects.filter(version=version, created_at__lt=root_message.created_at)
     new_messages = [
         Message(content=message.content, role=message.role, version=new_version) for message in messages_before_root
     ]
     Message.objects.bulk_create(new_messages)
 
-    # Set the new version as the current version
     conversation.active_version = new_version
     conversation.save()
 
@@ -230,3 +240,137 @@ def version_add_message(request, pk):
             status=status.HTTP_201_CREATED,
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rag_query(request):
+    query = (request.data.get("query") or "").strip()
+    top_k = int(request.data.get("top_k") or 3)
+    if not query:
+        return Response({"detail": "Query is required"}, status=400)
+
+    qs = UploadedFile.objects.filter(user=request.user)\
+         .exclude(extracted_text__isnull=True).exclude(extracted_text="")
+
+    hits = []
+    for uf in qs:
+        text = uf.extracted_text or ""
+        pos = text.lower().find(query.lower())
+        if pos != -1:
+            start = max(0, pos - 200)
+            end = min(len(text), pos + 200)
+            hits.append({
+                "file_id": str(uf.id),
+                "file": uf.file.name,
+                "snippet": text[start:end],
+            })
+    return Response({"query": query, "results": hits[:top_k]}, status=200)
+
+
+class IsUploaderRole(BasePermission):
+    allowed_groups = {"uploader", "admin"}
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if getattr(user, "is_superuser", False):
+            return True
+        user_groups = set(g.lower() for g in user.groups.values_list("name", flat=True))
+        return bool(self.allowed_groups & user_groups)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsUploaderRole])
+def process_file(request, pk):
+    try:
+        uf = UploadedFile.objects.get(pk=pk, user=request.user)
+    except UploadedFile.DoesNotExist:
+        return Response({"detail": "Not found"}, status=404)
+
+    name = uf.file.name.lower()
+    if name.endswith(".txt"):
+        uf.extracted_text = uf.file.read().decode("utf-8", errors="ignore")
+    else:
+        uf.extracted_text = "(processing not implemented for this file type)"
+    activity_log.info(
+        f'process user="{request.user.id}" email="{request.user.email}" '
+        f'file="{uf.file.name}" id="{uf.id}" type="{"txt" if name.endswith(".txt") else "other"}"'
+    )
+    uf.save()
+    return Response({"id": str(uf.id), "extracted": bool(uf.extracted_text)}, status=200)
+
+
+class ConversationPagination(pagination.PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class ConversationSummaryView(generics.ListAPIView):
+    serializer_class = ConversationSerializer
+    pagination_class = ConversationPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["title", "summary"]
+    ordering_fields = ["created_at", "modified_at", "title"]
+    ordering = ["-modified_at"]
+
+    def get_queryset(self):
+        queryset = Conversation.objects.filter(user=self.request.user, deleted_at__isnull=True)
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            queryset = queryset.filter(created_at__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(created_at__lte=end_date)
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        cache_key = f"summaries:{request.user.id}:{request.get_full_path()}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached, status=200)
+
+        response = super().list(request, *args, **kwargs)
+        cache.set(cache_key, response.data, timeout=300)  # 5 minutes
+        return response
+
+
+class FileUploadView(generics.CreateAPIView):
+    serializer_class = UploadedFileSerializer
+    parser_classes = [FormParser, MultiPartParser]
+    permission_classes = [IsAuthenticated, IsUploaderRole]
+
+    def perform_create(self, serializer):
+        instance = serializer.save(user=self.request.user)
+        activity_log.info(
+            f'upload user="{self.request.user.id}" email="{self.request.user.email}" '
+            f'file="{instance.file.name}" id="{instance.id}" checksum="{instance.checksum}"'
+        )
+
+
+class FileListView(generics.ListAPIView):
+    serializer_class = UploadedFileSerializer
+    permission_classes = [IsAuthenticated, IsUploaderRole]
+
+    def get_queryset(self):
+        activity_log.info(f'list user="{self.request.user.id}" email="{self.request.user.email}"')
+        return UploadedFile.objects.filter(user=self.request.user).order_by("-uploaded_at")
+
+
+class FileDeleteView(generics.DestroyAPIView):
+    serializer_class = UploadedFileSerializer
+    permission_classes = [IsAuthenticated, IsUploaderRole]
+
+    def get_queryset(self):
+        return UploadedFile.objects.filter(user=self.request.user)
+
+    def perform_destroy(self, instance):
+        activity_log.info(
+            f'delete user="{self.request.user.id}" email="{self.request.user.email}" '
+            f'file="{instance.file.name}" id="{instance.id}"'
+        )
+        if instance.file and default_storage.exists(instance.file.name):
+            default_storage.delete(instance.file.name)
+        instance.delete()
