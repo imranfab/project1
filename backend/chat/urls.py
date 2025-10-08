@@ -2,6 +2,9 @@ from django.urls import path
 
 from chat import views
 
+from chat.views import ConversationSummaryView
+
+
 urlpatterns = [
     path("", views.chat_root_view, name="chat_root_view"),
     path("conversations/", views.get_conversations, name="get_conversations"),
@@ -23,5 +26,8 @@ urlpatterns = [
     path('files/upload/', views.FileUploadView.as_view(), name="file-upload"),
     path('files/', views.FileListView.as_view(), name="file-list"),
     path('files/<uuid:pk>/', views.FileDeleteView.as_view(), name="file-delete"),
+    path('rag/query/', views.rag_query, name="rag-query"),
+    path("files/<uuid:pk>/process/", views.process_file, name="file-process"),
+    path("conversation-summary/", ConversationSummaryView.as_view(), name="conversation-summary-list"),
 
 ]

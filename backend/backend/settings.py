@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import os
+import logging
+
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -51,6 +53,45 @@ INSTALLED_APPS = [
     "gpt",
     'django_crontab',
 ]
+
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "format": '{"time":"%(asctime)s", "level":"%(levelname)s", "message":"%(message)s"}',
+        },
+    },
+    "handlers": {
+        "file_activity": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "activity.log"),
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "encoding": "utf-8",
+            "formatter": "json",
+        },
+    },
+    "loggers": {
+        "activity": { 
+            "handlers": ["file_activity"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "local-cache",
+        "TIMEOUT": 300,  # default TTL (seconds)
+    }
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
