@@ -14,17 +14,18 @@ class Role(models.Model):
 
 class Conversation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    title = models.CharField(max_length=100, blank=False, null=False, default="Mock title")
+    title = models.CharField(max_length=225, blank=True, null=True)
+    summary = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
     active_version = models.ForeignKey(
-        "Version", null=True, blank=True, on_delete=models.CASCADE, related_name="current_version_conversations"
+        "Version", null=True, blank=True, on_delete=models.SET_NULL, related_name="current_version_conversations"
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="conversations")
 
     def __str__(self):
-        return self.title
+        return self.title or f"Conversation {self.pk}"
 
     def version_count(self):
         return self.versions.count()
