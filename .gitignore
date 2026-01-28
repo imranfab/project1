@@ -31,3 +31,17 @@ server/dist
 
 # prompts
 prompts/debug
+
+# Virtual environment
+venv/
+../venv/
+
+# Environment variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# DB
+db.sqlite3
