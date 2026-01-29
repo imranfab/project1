@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.apps import apps
 
 from authentication.models import CustomUser
 
@@ -15,6 +16,13 @@ class Role(models.Model):
 class Conversation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=100, blank=False, null=False, default="Mock title")
+
+    summary = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Auto-generated summary of the conversation"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
     active_version = models.ForeignKey(
@@ -31,6 +39,29 @@ class Conversation(models.Model):
 
     version_count.short_description = "Number of versions"
 
+    def generate_summary(self):
+        """
+        Generate a simple summary using the first few messages
+        """
+        Message = apps.get_model("chat", "Message")
+
+        messages = (
+            Message.objects
+            .filter(version__conversation=self)
+            .order_by("created_at")
+            .values_list("content", flat=True)[:3]
+        )
+
+        if messages:
+            return " | ".join(messages)
+
+        return ""
+
+    def save(self, *args, **kwargs):
+        if not self.summary:
+            self.summary = self.generate_summary()
+        super().save(*args, **kwargs)
+
 
 class Version(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -43,8 +74,7 @@ class Version(models.Model):
     def __str__(self):
         if self.root_message:
             return f"Version of `{self.conversation.title}` created at `{self.root_message.created_at}`"
-        else:
-            return f"Version of `{self.conversation.title}` with no root message yet"
+        return f"Version of `{self.conversation.title}` with no root message yet"
 
 
 class Message(models.Model):
@@ -58,8 +88,8 @@ class Message(models.Model):
         ordering = ["created_at"]
 
     def save(self, *args, **kwargs):
-        self.version.conversation.save()
         super().save(*args, **kwargs)
+        self.version.conversation.save()
 
     def __str__(self):
         return f"{self.role}: {self.content[:20]}..."
