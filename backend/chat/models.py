@@ -22,6 +22,9 @@ class Conversation(models.Model):
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    # added the summary field
+    summary = models.TextField(blank=True, null=True)
+
 
     def __str__(self):
         return self.title
@@ -63,3 +66,23 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:20]}..."
+
+import hashlib
+from django.db import models
+
+class FileUpload(models.Model):
+    file = models.FileField(upload_to='uploads/')
+    file_hash = models.CharField(max_length=64, unique=True)
+    original_name = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.file_hash:
+            sha256 = hashlib.sha256()
+            for chunk in self.file.chunks():
+                sha256.update(chunk)
+            self.file_hash = sha256.hexdigest()
+        super().save(*args, **kwargs)
+
+    def _str_(self):
+        return self.original_name
