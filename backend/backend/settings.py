@@ -76,10 +76,10 @@ WSGI_APPLICATION = "backend.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME", "fullstack_db"),
-        "USER": os.getenv("DB_USER", "fullstack_user"),
-        "PASSWORD": os.getenv("DB_PASSWORD"),
-        "HOST": "localhost",
+        "NAME": "fullstack_db",
+        "USER": "fullstack_user",
+        "PASSWORD": "fullstack123",
+        "HOST": "127.0.0.1",
         "PORT": "5432",
     }
 }
