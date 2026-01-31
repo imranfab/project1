@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path,include
 
 from chat import views
 
@@ -19,4 +19,11 @@ urlpatterns = [
     ),
     path("conversations/<uuid:pk>/delete/", views.conversation_soft_delete, name="conversation_delete"),
     path("versions/<uuid:pk>/add_message/", views.version_add_message, name="version_add_message"),
+    #Endpoints for the task-3
+    path("summaries/", views.get_conversation_summaries, name="get_conversation_summaries"),
+    path("files/upload/", views.upload_file, name="upload_file"),
+    path("files/", views.list_uploaded_files, name="list_uploaded_files"),
+    path("files/<uuid:pk>/", views.get_uploaded_file, name="get_uploaded_file"),
+    path("files/<uuid:pk>/delete/", views.delete_uploaded_file, name="delete_uploaded_file"),
+
 ]

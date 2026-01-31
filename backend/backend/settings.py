@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -47,7 +46,22 @@ INSTALLED_APPS = [
     "authentication",
     "chat",
     "gpt",
+    "django_crontab",
+    "django_celery_beat",
 ]
+
+# Crontab Configuration
+CRONJOBS = [
+    ('0 0 * * *', 'django.core.management.call_command', ['cleanup_conversations']),
+]
+
+INSTALLED_APPS += ['rest_framework.authtoken']
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -84,10 +98,11 @@ WSGI_APPLICATION = "backend.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'New_db',
+        'NAME': 'Demo',
         'USER': 'postgres',
         'PASSWORD': 'Pakeer@124',
         'HOST': 'localhost',
@@ -135,6 +150,7 @@ USE_I18N = True
 
 STATIC_ROOT = BASE_DIR / "static"
 STATIC_URL = "/static/"
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -153,11 +169,14 @@ CSRF_TRUSTED_ORIGINS = [
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_SAMESITE = "None"
+# Media files configuration
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# CELERY SETTINGS
+# File upload settings
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10MB
+
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
-
-# CELERY BEAT SETTINGS
-INSTALLED_APPS += ['django_celery_beat']
