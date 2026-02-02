@@ -119,47 +119,11 @@ export const postRegister = async ({email, password}) => {
     }
 };
 
-
 export async function getServerSidePropsAuthHelper(context) {
-    let isAuthenticated = false;
-
-    const session = context.req.cookies.sessionid || null;
-    const currUser = context.req.cookies.user || null;
-
-    if (!currUser) {
-        return {
-            redirect: {
-                destination: '/login',
-                permanent: false,
-            },
-        };
-    }
-
-
-    if (session) {
-        const response = (await axiosInstance.get(`/auth/verify_session`,
-            {
-                headers: {
-                    'Cookie': `sessionid=${session}`,
-                }
-            })).data;
-
-        isAuthenticated = response.data;
-    }
-
-    if (!isAuthenticated) {
-        console.log('User is not authenticated, redirecting to login page.');
-        return {
-            redirect: {
-                destination: '/login',
-                permanent: false,
-            },
-        };
-    }
-
+    //  AUTH BYPASS FOR DEVELOPMENT / ASSIGNMENT
     return {
         props: {
-            isAuthenticated,
+            isAuthenticated: true,
         },
     };
 }

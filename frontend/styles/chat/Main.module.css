@@ -2,7 +2,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    overflow-y: auto;
 }
 
 .conversationContainer {
@@ -12,57 +11,45 @@
     align-items: center;
 }
 
+/* Bottom bar */
 .chatControlContainer {
     position: sticky;
     bottom: 0;
     display: flex;
-    padding-bottom: 1rem;
-    padding-top: 2rem;
+    justify-content: center;
+    padding: 1.5rem 1rem;
     background: linear-gradient(to bottom, transparent, var(--primary-bg-dark));
 }
 
-.choiceButtonContainer {
-    flex: 1;
+/* Inner aligned row */
+.chatControlInner {
+    width: 100%;
+    max-width: 950px;
     display: flex;
-    justify-content: flex-end;
     align-items: center;
+    gap: 0.75rem;
 }
 
+/* Input wrapper */
 .chatInputContainer {
+    flex: 1;
     display: flex;
-    flex-direction: row;
-    margin-left: auto;
-    align-items: center;
-    /*width: min(75%, 1500px);*/
-    min-width: 50%;
 }
 
+/* Textarea */
 .chatInputContainer textarea {
-    position: relative;
-    flex: 1;
-    margin: auto;
-    padding: .5rem;
-    font-size: 1.05rem;
+    width: 100%;
     resize: none;
-    border-radius: .25em;
-    overflow: auto;
-    word-break: break-all;
-    justify-content: center;
+    padding: 0.65rem 0.75rem;
+    font-size: 1.05rem;
+    border-radius: 0.45rem;
+    max-height: 200px;
+    border: 1px solid var(--secondary-bg-dark);
     background-color: var(--primary-bg-light);
     color: var(--primary-txt-light);
-    max-height: 200px;
-    border: 0.1rem solid var(--secondary-bg-dark);
 }
 
-.chatInputContainer textarea:hover,
 .chatInputContainer textarea:focus {
     outline: none;
     box-shadow: 0 0 0.25rem var(--button-bg-enabled);
-}
-
-.controlButtonsContainer {
-    flex: 1;
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
 }
