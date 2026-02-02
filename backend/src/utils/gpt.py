@@ -1,77 +1,60 @@
-from dataclasses import dataclass
+import os
+from groq import Groq
 
-from src.libs import openai
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-GPT_40_PARAMS = dict(
-    temperature=0.7,
-    top_p=0.95,
-    frequency_penalty=0,
-    presence_penalty=0,
-    stop=None,
-    stream=False,
-)
+def generate_summary(text: str) -> str:
+    if not text.strip():
+        return ""
 
-
-@dataclass
-class GPTVersion:
-    name: str
-    engine: str
+    response = client.chat.completions.create(
+       model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
 
 
-GPT_VERSIONS = {
-    "gpt35": GPTVersion("gpt35", "gpt-35-turbo-0613"),
-    "gpt35-16k": GPTVersion("gpt35-16k", "gpt-35-turbo-16k"),
-    "gpt4": GPTVersion("gpt4", "gpt-4-0613"),
-    "gpt4-32k": GPTVersion("gpt4-32k", "gpt4-32k-0613"),
-}
 
-
-def get_simple_answer(prompt: str, stream: bool = True):
-    kwargs = {**GPT_40_PARAMS, **dict(stream=stream)}
-
-    for resp in openai.ChatCompletion.create(
-        engine=GPT_VERSIONS["gpt35"].engine,
-        messages=[{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": prompt}],
-        **kwargs,
-    ):
-        choices = resp.get("choices", [])
-        if not choices:
-            continue
-        chunk = choices.pop()["delta"].get("content")
-        if chunk:
-            yield chunk
-
-
-def get_gpt_title(prompt: str, response: str):
-    sys_msg: str = (
-        "As an AI Assistant your goal is to make very short title, few words max for a conversation between user and "
-        "chatbot. You will be given the user's question and chatbot's first response and you will return only the "
-        "resulting title. Always return some raw title and nothing more."
-    )
-    usr_msg = f'user_question: "{prompt}"\n' f'chatbot_response: "{response}"'
-
-    response = openai.ChatCompletion.create(
-        engine=GPT_VERSIONS["gpt35"].engine,
-        messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": usr_msg}],
-        **GPT_40_PARAMS,
+        messages=[
+            {"role": "system", "content": "Summarize the conversation briefly."},
+            {"role": "user", "content": text},
+        ],
+        max_tokens=120,
+        temperature=0.3,
     )
 
-    result = response["choices"][0]["message"]["content"].replace('"', "")
-    return result
+    return response.choices[0].message.content.strip()
 
 
-def get_conversation_answer(conversation: list[dict[str, str]], model: str, stream: bool = True):
-    kwargs = {**GPT_40_PARAMS, **dict(stream=stream)}
-    engine = GPT_VERSIONS[model].engine
+def get_conversation_answer(conversation, model=None, stream=False):
+    """
+    Respond ONLY to the latest user message.
+    Prevents merging AI responses with user input.
+    """
 
-    for resp in openai.ChatCompletion.create(
-        engine=engine,
-        messages=[{"role": "system", "content": "You are a helpful assistant."}, *conversation],
-        **kwargs,
-    ):
-        choices = resp.get("choices", [])
-        if not choices:
-            continue
-        chunk = choices.pop()["delta"].get("content")
-        if chunk:
-            yield chunk
+    if not conversation or not isinstance(conversation, list):
+        return ""
+
+    #  Find the LAST user message
+    last_user_message = None
+    for msg in reversed(conversation):
+        if msg.get("role") == "user":
+            last_user_message = msg.get("content", "")
+            break
+
+    if not last_user_message:
+        return ""
+
+    # Generate response ONLY for that message
+    return generate_summary(last_user_message)
+
+
+
+def get_simple_answer(prompt: str):
+    return generate_summary(prompt)
+
+
+def get_gpt_title(user_question: str) -> str:
+    if not user_question:
+        return "New Conversation"
+
+    return generate_summary(user_question)
+
+

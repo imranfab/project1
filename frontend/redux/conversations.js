@@ -210,7 +210,7 @@ const allConversationsSlice = createSlice({
                 const newMessage = action.payload.message;
 
                 const conversation = state.find(conversation => conversation.id === conversationId);
-                const version = conversation.versions.find(version => version.active);
+                const version = conversation.version.find(version => version.active);
 
                 version.messages.push(newMessage);
             })
