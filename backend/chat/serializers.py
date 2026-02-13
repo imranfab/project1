@@ -1,8 +1,8 @@
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from rest_framework import serializers
-
-from chat.models import Conversation, Message, Role, Version
+from rest_framework.pagination import PageNumberPagination  
+from chat.models import Conversation, Message, Role, Version,UploadedFile
 
 
 def should_serialize(validated_data, field_name) -> bool:
@@ -150,3 +150,94 @@ class ConversationSerializer(serializers.ModelSerializer):
                 version_serializer.save(conversation=instance)
 
         return instance
+
+
+class ConversationSummarySerializer(serializers.ModelSerializer):
+    """Serializer specifically for conversation summaries endpoint"""
+    version_count = serializers.IntegerField(read_only=True)
+    message_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Conversation
+        fields = ['id', 'title', 'summary', 'created_at', 'modified_at', 'version_count', 'message_count', 'user']
+        read_only_fields = ['id', 'created_at', 'modified_at', 'summary']
+    
+    def get_message_count(self, obj):
+        """Get total message count in active version"""
+        if obj.active_version:
+            return obj.active_version.messages.count()
+        return 0
+
+class TitleSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=100, required=True)
+
+
+class UploadedFileSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    uploaded_by = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = UploadedFile
+        fields = [
+            'id', 
+            'file', 
+            'file_url',
+            'original_filename', 
+            'file_size', 
+            'file_type', 
+            'file_hash', 
+            'uploaded_at',
+            'uploaded_by',
+            'user'
+        ]
+        read_only_fields = ['id', 'file_hash', 'file_size', 'file_type', 'uploaded_at', 'file_url', 'uploaded_by']
+    
+    def get_file_url(self, obj):
+        """Get the full URL of the uploaded file"""
+        request = self.context.get('request')
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return None
+    
+    def validate_file(self, value):
+        """Validate file upload"""
+        # Check file size (max 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB
+        if value.size > max_size:
+            raise serializers.ValidationError(f"File size exceeds maximum allowed size of {max_size / (1024*1024)}MB")
+        
+        return value
+    
+    def create(self, validated_data):
+        """Override create to handle duplicate file check"""
+        file = validated_data.get('file')
+        user = validated_data.get('user')
+        
+        # Calculate file hash
+        file_hash = UploadedFile.calculate_file_hash(file)
+        
+        # Check if file with same hash already exists for this user
+        existing_file = UploadedFile.objects.filter(file_hash=file_hash, user=user).first()
+        
+        if existing_file:
+            raise serializers.ValidationError({
+                'file': 'This file has already been uploaded.',
+                'existing_file_id': str(existing_file.id),
+                'existing_file_name': existing_file.original_filename,
+                'uploaded_at': existing_file.uploaded_at
+            })
+        
+        # Set file metadata
+        validated_data['file_hash'] = file_hash
+        validated_data['file_size'] = file.size
+        validated_data['file_type'] = file.content_type or 'application/octet-stream'
+        validated_data['original_filename'] = file.name
+        
+        return super().create(validated_data)
+
+
+# Pagination class for summaries
+class SummaryPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
