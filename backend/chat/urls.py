@@ -20,3 +20,6 @@ urlpatterns = [
     path("conversations/<uuid:pk>/delete/", views.conversation_soft_delete, name="conversation_delete"),
     path("versions/<uuid:pk>/add_message/", views.version_add_message, name="version_add_message"),
 ]
+
+from chat.urls_new import new_urlpatterns
+urlpatterns += new_urlpatterns

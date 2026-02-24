@@ -1,92 +1,84 @@
 from django.contrib import admin
-from django.utils import timezone
-from nested_admin.nested import NestedModelAdmin, NestedStackedInline, NestedTabularInline
+from django.utils.html import format_html
 
-from chat.models import Conversation, Message, Role, Version
+from .models import Conversation, FileAccessLog, Message, Role, UploadedFile, Version
 
 
-class RoleAdmin(NestedModelAdmin):
+class VersionInline(admin.TabularInline):
+    model = Version
+    extra = 0
+    show_change_link = True
+
+
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = [
+        "title",
+        "user",
+        "summary_preview",       # Task 1: show summary
+        "summary_generated_at",  # Task 1: show when generated
+        "created_at",
+        "modified_at",
+        "version_count",
+    ]
+    search_fields = ["title", "user__email", "summary"]
+    list_filter = ["created_at", "user"]
+    readonly_fields = ["created_at", "modified_at", "summary_generated_at"]
+    inlines = [VersionInline]
+    fieldsets = [
+        ("Basic Info", {
+            "fields": ["user", "title", "active_version", "deleted_at", "created_at", "modified_at"]
+        }),
+        ("Summary (Task 1)", {
+            "fields": ["summary", "summary_generated_at"],
+            "description": "Auto-generated conversation summary.",
+        }),
+    ]
+
+    @admin.display(description="Summary")
+    def summary_preview(self, obj):
+        if obj.summary:
+            return obj.summary[:80] + ("…" if len(obj.summary) > 80 else "")
+        return format_html("<em style='color:gray'>No summary yet</em>")
+
+
+@admin.register(Version)
+class VersionAdmin(admin.ModelAdmin):
+    list_display = ["id", "conversation", "parent_version", "root_message"]
+
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = ["id", "role", "short_content", "created_at", "version"]
+    list_filter = ["role"]
+    search_fields = ["content"]
+
+    @admin.display(description="Content")
+    def short_content(self, obj):
+        return obj.content[:80]
+
+
+@admin.register(Role)
+class RoleAdmin(admin.ModelAdmin):
     list_display = ["id", "name"]
 
 
-class MessageAdmin(NestedModelAdmin):
-    list_display = ["display_desc", "role", "id", "created_at", "version"]
-
-    def display_desc(self, obj):
-        return obj.content[:20] + "..."
-
-    display_desc.short_description = "content"
-
-
-class MessageInline(NestedTabularInline):
-    model = Message
-    extra = 2  # number of extra forms to display
+@admin.register(UploadedFile)
+class UploadedFileAdmin(admin.ModelAdmin):
+    list_display = ["original_filename", "uploaded_by", "size_bytes", "uploaded_at", "is_deleted"]
+    list_filter = ["is_deleted", "uploaded_at"]
+    search_fields = ["original_filename", "uploaded_by__email"]
+    readonly_fields = ["sha256", "uploaded_at", "deleted_at", "size_bytes"]
 
 
-class VersionInline(NestedStackedInline):
-    model = Version
-    extra = 1
-    inlines = [MessageInline]
+@admin.register(FileAccessLog)
+class FileAccessLogAdmin(admin.ModelAdmin):
+    list_display = ["action", "performed_by", "file", "ip_address", "timestamp"]
+    list_filter = ["action", "timestamp"]
+    readonly_fields = ["timestamp"]
 
+    def has_add_permission(self, request):
+        return False
 
-class DeletedListFilter(admin.SimpleListFilter):
-    title = "Deleted"
-    parameter_name = "deleted"
-
-    def lookups(self, request, model_admin):
-        return (
-            ("True", "Yes"),
-            ("False", "No"),
-        )
-
-    def queryset(self, request, queryset):
-        value = self.value()
-        if value == "True":
-            return queryset.filter(deleted_at__isnull=False)
-        elif value == "False":
-            return queryset.filter(deleted_at__isnull=True)
-        return queryset
-
-
-class ConversationAdmin(NestedModelAdmin):
-    actions = ["undelete_selected", "soft_delete_selected"]
-    inlines = [VersionInline]
-    list_display = ("title", "id", "created_at", "modified_at", "deleted_at", "version_count", "is_deleted", "user")
-    list_filter = (DeletedListFilter,)
-    ordering = ("-modified_at",)
-
-    def undelete_selected(self, request, queryset):
-        queryset.update(deleted_at=None)
-
-    undelete_selected.short_description = "Undelete selected conversations"
-
-    def soft_delete_selected(self, request, queryset):
-        queryset.update(deleted_at=timezone.now())
-
-    soft_delete_selected.short_description = "Soft delete selected conversations"
-
-    def get_action_choices(self, request, **kwargs):
-        choices = super().get_action_choices(request)
-        for idx, choice in enumerate(choices):
-            fn_name = choice[0]
-            if fn_name == "delete_selected":
-                new_choice = (fn_name, "Hard delete selected conversations")
-                choices[idx] = new_choice
-        return choices
-
-    def is_deleted(self, obj):
-        return obj.deleted_at is not None
-
-    is_deleted.boolean = True
-    is_deleted.short_description = "Deleted?"
-
-
-class VersionAdmin(NestedModelAdmin):
-    inlines = [MessageInline]
-    list_display = ("id", "conversation", "parent_version", "root_message")
-
-
-admin.site.register(Role, RoleAdmin)
-admin.site.register(Message, MessageAdmin)
-admin.site.register(Conversation, ConversationAdmin)
-admin.site.register(Version, VersionAdmin)
+    def has_change_permission(self, request, obj=None):
+        return False
