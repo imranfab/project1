@@ -72,16 +72,17 @@ class ConversationSummaryListView(generics.ListAPIView):
         if created_before:
             qs = qs.filter(created_at__date__lte=created_before)
         if has_summary == "true":
-            qs = qs.exclude(summary="")
+            qs = qs.exclude(summary__isnull=True).exclude(summary="")
         elif has_summary == "false":
-            qs = qs.filter(summary="")
+            qs = qs.filter(summary="") | qs.filter(summary__isnull=True)
 
         return qs
 
     def list(self, request, *args, **kwargs):
         # Task 4: Cache results per user per page
         page = request.query_params.get("page", 1)
-        cache_key = f"summaries_{request.user.pk}_page_{page}"
+        params = request.query_params.urlencode()
+        cache_key = f"summaries_{request.user.pk}_{params}"
         cached = cache.get(cache_key)
         if cached:
             return Response(cached)
