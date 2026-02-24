@@ -282,4 +282,5 @@ def delete_uploaded_file(request, pk):
 
     file_obj = get_object_or_404(UploadedFile, pk=pk)
     file_obj.delete()
-    return Response(status=status.HTTP_204_NO_CONTENT)
+    return Response({"message": "Deleted successfully"},
+    status=status.HTTP_200_OK)
