@@ -1,232 +1,285 @@
-from django.contrib.auth.decorators import login_required
+import hashlib
 from django.utils import timezone
-from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
 
-from chat.models import Conversation, Message, Version
-from chat.serializers import ConversationSerializer, MessageSerializer, TitleSerializer, VersionSerializer
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.authentication import SessionAuthentication
+
+from authentication.models import CustomUser
+from chat.models import (
+    Conversation,
+    Message,
+    Version,
+    Role,
+    UploadedFile,
+)
+from chat.serializers import (
+    ConversationSerializer,
+    MessageSerializer,
+    TitleSerializer,
+    ConversationSummarySerializer,
+    FileUploadSerializer,
+    FileListSerializer,
+)
 from chat.utils.branching import make_branched_conversation
 
 
+class CsrfExemptSessionAuthentication(SessionAuthentication):
+    def enforce_csrf(self, request):
+        return
+
+def user_has_role(user, roles):
+    if not user or not user.is_authenticated:
+        return False
+
+    if "admin" in roles and user.is_superuser:
+        return True
+
+    if "editor" in roles and user.is_staff:
+        return True
+
+    return False
+
+# Chat basic endpoints
+
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def chat_root_view(request):
-    return Response({"message": "Chat works!"}, status=status.HTTP_200_OK)
+    return Response({"message": "Chat works!"})
 
 
-@login_required
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def get_conversations(request):
-    conversations = Conversation.objects.filter(user=request.user, deleted_at__isnull=True).order_by("-modified_at")
-    serializer = ConversationSerializer(conversations, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    conversations = Conversation.objects.filter(
+        deleted_at__isnull=True
+    ).order_by("-modified_at")
+    return Response(ConversationSerializer(conversations, many=True).data)
 
 
-@login_required
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def get_conversations_branched(request):
-    conversations = Conversation.objects.filter(user=request.user, deleted_at__isnull=True).order_by("-modified_at")
-    conversations_serializer = ConversationSerializer(conversations, many=True)
-    conversations_data = conversations_serializer.data
+    conversations = Conversation.objects.filter(
+        deleted_at__isnull=True
+    ).order_by("-modified_at")
 
-    for conversation_data in conversations_data:
-        make_branched_conversation(conversation_data)
+    data = ConversationSerializer(conversations, many=True).data
+    for c in data:
+        make_branched_conversation(c)
 
-    return Response(conversations_data, status=status.HTTP_200_OK)
+    return Response(data)
 
 
-@login_required
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def get_conversation_branched(request, pk):
-    try:
-        conversation = Conversation.objects.get(user=request.user, pk=pk)
-    except Conversation.DoesNotExist:
-        return Response({"detail": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    conversation_serializer = ConversationSerializer(conversation)
-    conversation_data = conversation_serializer.data
-    make_branched_conversation(conversation_data)
-
-    return Response(conversation_data, status=status.HTTP_200_OK)
+    conversation = get_object_or_404(Conversation, pk=pk)
+    data = ConversationSerializer(conversation).data
+    make_branched_conversation(data)
+    return Response(data)
 
 
-@login_required
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def add_conversation(request):
-    try:
-        conversation_data = {"title": request.data.get("title", "Mock title"), "user": request.user}
-        conversation = Conversation.objects.create(**conversation_data)
-        version = Version.objects.create(conversation=conversation)
+    if request.user.is_authenticated:
+        user = request.user
+    else:
+        user, _ = CustomUser.objects.get_or_create(
+            email="anonymous@soulpage.local",
+            defaults={"is_active": True},
+        )
 
-        messages_data = request.data.get("messages", [])
-        for idx, message_data in enumerate(messages_data):
-            message_serializer = MessageSerializer(data=message_data)
-            if message_serializer.is_valid():
-                message_serializer.save(version=version)
-                if idx == 0:
-                    version.save()
-            else:
-                return Response(message_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    title = str(request.data.get("title", "New Chat"))[:100]
+    conversation = Conversation.objects.create(title=title, user=user)
+    version = Version.objects.create(conversation=conversation)
 
-        conversation.active_version = version
-        conversation.save()
+    messages = request.data.get("messages") or []
+    for msg in messages:
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
 
-        serializer = ConversationSerializer(conversation)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        role_name = msg.get("role", "user")
+        role, _ = Role.objects.get_or_create(name=str(role_name))
 
+        Message.objects.create(
+            content=content,
+            role=role,
+            version=version,
+        )
 
-@login_required
-@api_view(["GET", "PUT", "DELETE"])
-def conversation_manage(request, pk):
-    try:
-        conversation = Conversation.objects.get(user=request.user, pk=pk)
-    except Conversation.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    conversation.active_version = version
+    conversation.save()
 
-    if request.method == "GET":
-        serializer = ConversationSerializer(conversation)
-        return Response(serializer.data)
-
-    elif request.method == "PUT":
-        serializer = ConversationSerializer(conversation, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    elif request.method == "DELETE":
-        conversation.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    return Response(
+        ConversationSerializer(conversation).data,
+        status=status.HTTP_201_CREATED,
+    )
 
 
-@login_required
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def conversation_add_message(request, pk):
+    conversation = get_object_or_404(Conversation, pk=pk)
+
+    if not conversation.active_version:
+        return Response(
+            {"detail": "No active version"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    serializer = MessageSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(version=conversation.active_version)
+
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 @api_view(["PUT"])
+@permission_classes([IsAuthenticated])
 def conversation_change_title(request, pk):
-    try:
-        conversation = Conversation.objects.get(user=request.user, pk=pk)
-    except Conversation.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
+    conversation = get_object_or_404(Conversation, pk=pk)
     serializer = TitleSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
-    if serializer.is_valid():
-        conversation.title = serializer.data.get("title")
-        conversation.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    conversation.title = serializer.validated_data["title"][:100]
+    conversation.save()
 
-    return Response({"detail": "Title not provided"}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@login_required
 @api_view(["PUT"])
+@permission_classes([IsAuthenticated])
 def conversation_soft_delete(request, pk):
-    try:
-        conversation = Conversation.objects.get(user=request.user, pk=pk)
-    except Conversation.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
+    conversation = get_object_or_404(Conversation, pk=pk)
     conversation.deleted_at = timezone.now()
     conversation.save()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@login_required
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([AllowAny])
+def conversation_manage(request, pk):
+    return Response({"detail": "Not implemented"}, status=501)
+
+
 @api_view(["POST"])
-def conversation_add_message(request, pk):
-    try:
-        conversation = Conversation.objects.get(user=request.user, pk=pk)
-        version = conversation.active_version
-    except Conversation.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-    if version is None:
-        return Response({"detail": "Active version not set for this conversation."}, status=status.HTTP_400_BAD_REQUEST)
-
-    serializer = MessageSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save(version=version)
-        # return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(
-            {
-                "message": serializer.data,
-                "conversation_id": conversation.id,
-            },
-            status=status.HTTP_201_CREATED,
-        )
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@login_required
-@api_view(["POST"])
+@permission_classes([AllowAny])
 def conversation_add_version(request, pk):
-    try:
-        conversation = Conversation.objects.get(user=request.user, pk=pk)
-        version = conversation.active_version
-        root_message_id = request.data.get("root_message_id")
-        root_message = Message.objects.get(pk=root_message_id)
-    except Conversation.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-    except Message.DoesNotExist:
-        return Response({"detail": "Root message not found"}, status=status.HTTP_404_NOT_FOUND)
+    return Response({"detail": "Not implemented"}, status=501)
 
-    # Check if root message belongs to the same conversation
-    if root_message.version.conversation != conversation:
-        return Response({"detail": "Root message not part of the conversation"}, status=status.HTTP_400_BAD_REQUEST)
 
-    new_version = Version.objects.create(
-        conversation=conversation, parent_version=root_message.version, root_message=root_message
+@api_view(["PUT"])
+@permission_classes([AllowAny])
+def conversation_switch_version(request, pk, version_id):
+    return Response({"detail": "Not implemented"}, status=501)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def version_add_message(request, pk):
+    return Response({"detail": "Not implemented"}, status=501)
+
+# Task 8: Conversation summaries
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def conversation_summaries(request):
+    search = request.GET.get("search", "")
+    page_number = request.GET.get("page", 1)
+    page_size = int(request.GET.get("page_size", 10))
+
+    queryset = Conversation.objects.filter(
+        deleted_at__isnull=True
+    ).filter(
+        Q(title__icontains=search) | Q(summary__icontains=search)
+    ).order_by("-modified_at")
+
+    paginator = Paginator(queryset, page_size)
+    page = paginator.get_page(page_number)
+
+    serializer = ConversationSummarySerializer(page.object_list, many=True)
+    return Response({
+        "count": paginator.count,
+        "total_pages": paginator.num_pages,
+        "current_page": page.number,
+        "results": serializer.data,
+    })
+
+# Task 9–11: File upload RBAC
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def upload_file(request):
+    if not user_has_role(request.user, ["admin", "editor"]):
+        return Response(
+            {"detail": "You do not have permission to upload files"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    file = request.FILES.get("file")
+    if not file:
+        return Response(
+            {"detail": "File is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    hasher = hashlib.sha256()
+    for chunk in file.chunks():
+        hasher.update(chunk)
+    file_hash = hasher.hexdigest()
+
+    if UploadedFile.objects.filter(file_hash=file_hash).exists():
+        return Response(
+            {"detail": "File already uploaded"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    uploaded_file = UploadedFile.objects.create(
+        file=file,
+        filename=file.name,
+        file_hash=file_hash,
+        uploaded_by=request.user,
     )
 
-    # Copy messages before root_message to new_version
-    messages_before_root = Message.objects.filter(version=version, created_at__lt=root_message.created_at)
-    new_messages = [
-        Message(content=message.content, role=message.role, version=new_version) for message in messages_before_root
-    ]
-    Message.objects.bulk_create(new_messages)
-
-    # Set the new version as the current version
-    conversation.active_version = new_version
-    conversation.save()
-
-    serializer = VersionSerializer(new_version)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(
+        FileUploadSerializer(uploaded_file).data,
+        status=status.HTTP_201_CREATED,
+    )
 
 
-@login_required
-@api_view(["PUT"])
-def conversation_switch_version(request, pk, version_id):
-    try:
-        conversation = Conversation.objects.get(pk=pk)
-        version = Version.objects.get(pk=version_id, conversation=conversation)
-    except Conversation.DoesNotExist:
-        return Response({"detail": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
-    except Version.DoesNotExist:
-        return Response({"detail": "Version not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    conversation.active_version = version
-    conversation.save()
-
-    return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-@login_required
-@api_view(["POST"])
-def version_add_message(request, pk):
-    try:
-        version = Version.objects.get(pk=pk)
-    except Version.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-    serializer = MessageSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save(version=version)
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def list_uploaded_files(request):
+    if not user_has_role(request.user, ["admin", "editor"]):
         return Response(
-            {
-                "message": serializer.data,
-                "version_id": version.id,
-            },
-            status=status.HTTP_201_CREATED,
+            {"detail": "You do not have permission to view files"},
+            status=status.HTTP_403_FORBIDDEN,
         )
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    files = UploadedFile.objects.all().order_by("-uploaded_at")
+    serializer = FileListSerializer(files, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["DELETE"])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def delete_uploaded_file(request, pk):
+    if not user_has_role(request.user, ["admin"]):
+        return Response(
+            {"detail": "Only admins can delete files"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    file_obj = get_object_or_404(UploadedFile, pk=pk)
+    file_obj.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

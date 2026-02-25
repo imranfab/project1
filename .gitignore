@@ -1,5 +1,6 @@
-# Logs
-logs
+# LOGS
+
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,10 +8,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Editor directories and files
+# EDITORS / OS
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
@@ -18,16 +19,31 @@ lerna-debug.log*
 *.sln
 *.sw?
 
-# Client
-client/node_modules
-client/dist
-client/dist-ssr
-client/*.local
+# NODE / NEXT.JS
+node_modules/
+.next/
+out/
 
-# Server
-server/.env
-server/node_modules
-server/dist
+# PYTHON
+venv/
+__pycache__/
+*.pyc
 
-# prompts
+# ENV FILES
+.env
+.env.local
+
+# FRONTEND
+
+frontend/node_modules/
+frontend/.next/
+
+
+# BACKEND
+backend/venv/
+backend/__pycache__/
+backend/uploads/
+
+# TEMP / NOTES
+*.txt
 prompts/debug
