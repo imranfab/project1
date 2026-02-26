@@ -1,4 +1,8 @@
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.auth.models import (
+    AbstractBaseUser,
+    BaseUserManager,
+    PermissionsMixin,
+)
 from django.db import models
 
 
@@ -17,8 +21,8 @@ class CustomUserManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
+        user.is_active = True
         user.save(using=self._db)
-
         return user
 
     def create_superuser(self, email, password, **extra_fields):
@@ -31,8 +35,19 @@ class CustomUserManager(BaseUserManager):
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
-    is_active = models.BooleanField(default=False)
+
+    #  Django auth flags
+    is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+
+    #  ROLE-BASED ACCESS CONTROL
+    role = models.ForeignKey(
+        "chat.Role",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users",
+    )
 
     objects = CustomUserManager()
 
